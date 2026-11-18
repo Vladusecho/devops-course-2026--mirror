@@ -1,0 +1,6 @@
+---
+app_image: "ghcr.io/vladusecho/devops-ci-app"
+app_tag: "1ffe90a999ee2a7c5a2f540d5fe4774e05fdd90b"
+app_container_name: "devops-ci-app"
+app_host_port: 5000
+app_internal_port: 5000
