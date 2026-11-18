@@ -116,3 +116,38 @@
   }
   ```
   Завершающий слэш в директиве `proxy_pass` обеспечивает перезапись URI, заменяя префикс `/app/` на `/` при обращении к бэкенду.
+
+## 10. Ansible
+- **Расположение проекта Ansible:** каталог `ansible/` в корне репозитория `devops-course-2026`.
+- **Управляющий и управляемый узлы:**
+  - Управляющий узел (Control Node): хостовая операционная система macOS/Linux с установленным `ansible-core` (версия $\ge$ 2.16) и коллекциями `ansible.posix`, `community.docker`, `community.general`;
+  - Управляемый узел (Managed Node): виртуальная машина `devops-vm` (Ubuntu Server 24.04/26.10 LTS, архитектура amd64/aarch64, сетевой адрес `192.168.56.2`).
+- **Файлы инвентаря (Inventory):**
+  - `ansible/inventory/bootstrap.ini`: первичный запуск от имени пользователя `student` по паролю с запросом эскалации прав (`--ask-pass --ask-become-pass`);
+  - `ansible/inventory/prod.ini`: штатные последующие запуски от имени сервисного пользователя `devops` по закрытому SSH-ключу (`ansible_private_key_file=~/.ssh/devops_vm`) с правами `NOPASSWD:ALL` в `sudo`.
+- **Роли Ansible и разделение обязанностей:**
+  - `base`: верификация поддерживаемой платформы ОС, установка базовых сетевых утилит и зависимостей модулей (`ca-certificates`, `curl`, `gnupg`, `openssh-server`, `ufw`, `python3-debian`, `python3-requests`), подключение официального deb822-репозитория Docker, установка пакетов Docker Engine (`docker-ce`, `docker-ce-cli`, `containerd.io`, `docker-buildx-plugin`, `docker-compose-plugin`) и обеспечение автозапуска службы `docker`;
+  - `ssh`: создание сервисной учетной записи `devops`, добавление открытого ключа `~/.ssh/devops_vm.pub` в `authorized_keys`, настройка беспарольного вызова `sudo` (`/etc/sudoers.d/devops` с валидацией через `visudo`), усиление безопасности SSH (`/etc/ssh/sshd_config.d/00-ansible-hardening.conf`: отключение парольной аутентификации, запрет входа root, ограничение `AllowUsers student devops`), настройка межсетевого экрана UFW (открытие портов 22/tcp и 80/tcp, политика по умолчанию `deny incoming`, `allow outgoing`);
+  - `nginx`: установка Nginx, развертывание Jinja2-шаблона виртуального хоста `/etc/nginx/sites-available/devops-ci-app` с обратным проксированием на локальный порт контейнера (`proxy_pass http://127.0.0.1:{{ app_host_port }}`), отключение дефолтного сайта, создание симлинка в `sites-enabled`, проверка конфигурации `nginx -t` и перезагрузка службы через цепочку handlers;
+  - `app`: включение пользователя `devops` в группу `docker`, загрузка верифицированного контейнерного образа из GHCR по полному SHA (`community.docker.docker_image`), запуск контейнера `devops-ci-app` с публикацией порта на loopback-интерфейсе `127.0.0.1:5000:5000` и политикой перезапуска `unless-stopped` (`community.docker.docker_container`), валидация доступности сервиса через периодический опрос эндпоинта проверки работоспособности (`ansible.builtin.uri`).
+- **Контейнерное приложение:**
+  - Адрес образа: `ghcr.io/vladusecho/devops-ci-app`;
+  - Зафиксированный полный SHA коммита (`app_tag` в `group_vars/all.yml`): `1ffe90a999ee2a7c5a2f540d5fe4774e05fdd90b`;
+  - Локальный порт публикации: `127.0.0.1:5000` (строго loopback);
+  - Эндпоинт проверки работоспособности (health endpoint): `http://127.0.0.1:5000/health` (ожидаемый JSON-ответ: `{"status":"ok"}`).
+- **Команды запуска:**
+  - Первичный запуск (bootstrap):
+    ```bash
+    cd ansible
+    ansible-playbook -i inventory/bootstrap.ini site.yml --ask-pass --ask-become-pass
+    ```
+  - Повторный штатный запуск (prod, полностью неинтерактивный, идемпотентный):
+    ```bash
+    cd ansible
+    ansible-playbook site.yml
+    ```
+  - Запуск read-only аудита развернутой конфигурации:
+    ```bash
+    cd ansible
+    ansible-playbook verify.yml
+    ```

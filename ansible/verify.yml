@@ -13,8 +13,8 @@
     - name: Assert password authentication is disabled
       ansible.builtin.assert:
         that:
-          - "'passwordauthentication no' in sshd_effective.stdout"
-          - "'permitrootlogin no' in sshd_effective.stdout"
+          - "'passwordauthentication no' in (sshd_effective.stdout | lower)"
+          - "'permitrootlogin no' in (sshd_effective.stdout | lower)"
 
     - name: Read container facts
       community.docker.docker_container_info:
